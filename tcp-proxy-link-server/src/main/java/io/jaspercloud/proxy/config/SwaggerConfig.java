@@ -13,7 +13,6 @@ import springfox.documentation.spring.web.plugins.Docket;
 import springfox.documentation.swagger2.annotations.EnableSwagger2;
 
 /**
- * Created by TimoRD on 2018/1/10.
  */
 @Configuration
 @EnableSwagger2
@@ -30,7 +29,7 @@ public class SwaggerConfig {
                 .apiInfo(apiInfo())
                 .select()
                 .apis(Predicates.or(new Predicate[]{
-                        RequestHandlerSelectors.basePackage("com.timo.proxy.controller")
+                        RequestHandlerSelectors.basePackage("io.jaspercloud.proxy.controller")
                 }))
                 .paths(PathSelectors.any())
                 .build();
