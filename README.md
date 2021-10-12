@@ -16,6 +16,7 @@ tcp-proxy-link
 二、代理客户端
 
 1.agent-client连接agent-server和保持心跳
+
 <img src="data/struct.jpg">
 
 ## 流程图
