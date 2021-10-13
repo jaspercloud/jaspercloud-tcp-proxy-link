@@ -64,7 +64,7 @@ public class ProxyProcessHandler extends ChannelInboundHandlerAdapter {
         }
         Channel proxyChannel = ctx.channel();
         InetSocketAddress ipAddress = (InetSocketAddress) proxyChannel.remoteAddress();
-        checkIpAddress(proxyChannel, ipAddress.getHostName(), ipAddress.getPort());
+        checkIpAddress(proxyChannel, ipAddress.getAddress().getHostAddress(), ipAddress.getPort());
         doConnect(proxyChannel);
     }
 
