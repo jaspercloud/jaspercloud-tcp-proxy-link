@@ -1,14 +1,11 @@
 package io.jaspercloud.proxy.core.support.agent.client;
 
-import com.google.gson.Gson;
-import io.jaspercloud.proxy.core.dto.ConnectReqData;
-import io.jaspercloud.proxy.core.dto.ConnectRespData;
-import io.jaspercloud.proxy.core.dto.Data;
-import io.jaspercloud.proxy.core.dto.HeartData;
+import io.jaspercloud.proxy.core.proto.TcpProtos;
 import io.jaspercloud.proxy.core.support.LogHandler;
-import io.jaspercloud.proxy.core.support.agent.DataEncodeHandler;
 import io.jaspercloud.proxy.core.support.tunnel.DataClient;
-import io.jaspercloud.proxy.core.support.tunnel.DataTunnel;
+import io.jaspercloud.proxy.core.support.tunnel.DecodeTunnelHandler;
+import io.jaspercloud.proxy.core.support.tunnel.EncodeTunnelHandler;
+import io.jaspercloud.proxy.core.support.tunnel.SendTunnelHeartHandler;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -17,6 +14,10 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
+import io.netty.handler.codec.protobuf.ProtobufDecoder;
+import io.netty.handler.codec.protobuf.ProtobufEncoder;
+import io.netty.handler.codec.protobuf.ProtobufVarint32FrameDecoder;
+import io.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepender;
 import io.netty.util.concurrent.ScheduledFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +26,7 @@ import org.springframework.beans.factory.annotation.Value;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.concurrent.TimeUnit;
+
 
 public class AgentClientHandler extends ChannelInboundHandlerAdapter {
 
@@ -35,8 +37,6 @@ public class AgentClientHandler extends ChannelInboundHandlerAdapter {
 
     private ScheduledFuture<?> fixedRate;
 
-    private Gson gson = new Gson();
-
     private long heartTime;
 
     public AgentClientHandler(long heartTime) {
@@ -46,7 +46,9 @@ public class AgentClientHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         fixedRate = ctx.executor().scheduleAtFixedRate(() -> {
-            ctx.writeAndFlush(gson.toJson(new HeartData()));
+            ctx.writeAndFlush(TcpProtos.TcpMessage.newBuilder()
+                    .setType(TcpProtos.DataType.Heart)
+                    .build());
         }, 0, heartTime, TimeUnit.MILLISECONDS);
     }
 
@@ -57,25 +59,29 @@ public class AgentClientHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        Data data = gson.fromJson((String) msg, Data.class);
-        logger.info("channelRead type: {}", data.getType());
-        switch (data.getType()) {
-            case Data.Type.ConnectReq: {
+        TcpProtos.TcpMessage tcpMessage = (TcpProtos.TcpMessage) msg;
+        logger.info("channelRead type: {}", tcpMessage.getType());
+        switch (tcpMessage.getType().getNumber()) {
+            case TcpProtos.DataType.ConnectReq_VALUE: {
                 logger.info("connectReq: {}", ctx.channel().id().asShortText());
-                ConnectReqData reqData = gson.fromJson((String) msg, ConnectReqData.class);
+                TcpProtos.ConnectReqData reqData = TcpProtos.ConnectReqData.parseFrom(tcpMessage.getData());
                 connectTunnel(ctx.channel(), reqData);
                 break;
             }
         }
     }
 
-    private void connectTunnel(Channel agentChannel, ConnectReqData reqData) throws Exception {
+    private void connectTunnel(Channel agentChannel, TcpProtos.ConnectReqData reqData) throws Exception {
         DataClient tunnelClient = new DataClient(new ChannelInitializer<SocketChannel>() {
             @Override
             protected void initChannel(SocketChannel channel) throws Exception {
                 ChannelPipeline pipeline = channel.pipeline();
                 pipeline.addLast(new LogHandler("tunnel"));
-                pipeline.addLast("encode", new DataEncodeHandler());
+                pipeline.addLast(new ProtobufVarint32FrameDecoder());
+                pipeline.addLast(new ProtobufDecoder(TcpProtos.TcpMessage.getDefaultInstance()));
+                pipeline.addLast(new ProtobufVarint32LengthFieldPrepender());
+                pipeline.addLast(new ProtobufEncoder());
+                pipeline.addLast(new SendTunnelHeartHandler(reqData.getSessionId(), heartTime));
             }
         });
         tunnelClient.connect(new InetSocketAddress(reqData.getTunnelHost(), reqData.getTunnelPort()), connectTimeout)
@@ -86,11 +92,15 @@ public class AgentClientHandler extends ChannelInboundHandlerAdapter {
                         logger.info("tunnelChannel isActive={}", tunnelChannel.isActive());
                         if (!tunnelChannel.isActive()) {
                             tunnelChannel.close();
-                            ConnectRespData respData = new ConnectRespData();
-                            respData.setProxyType(reqData.getProxyType());
-                            respData.setSessionId(reqData.getSessionId());
-                            respData.setCode(404);
-                            agentChannel.writeAndFlush(gson.toJson(respData));
+                            TcpProtos.TcpMessage tcpMessage = TcpProtos.TcpMessage.newBuilder()
+                                    .setType(TcpProtos.DataType.ConnectResp)
+                                    .setData(TcpProtos.ConnectRespData.newBuilder()
+                                            .setProxyType(reqData.getProxyType())
+                                            .setSessionId(reqData.getSessionId())
+                                            .setCode(404)
+                                            .build().toByteString())
+                                    .build();
+                            agentChannel.writeAndFlush(tcpMessage);
                             return;
                         }
                         connectDest(tunnelChannel, reqData);
@@ -98,7 +108,8 @@ public class AgentClientHandler extends ChannelInboundHandlerAdapter {
                 });
     }
 
-    private void connectDest(Channel tunnelChannel, ConnectReqData reqData) throws Exception {
+    private void connectDest(Channel tunnelChannel, TcpProtos.ConnectReqData reqData) throws Exception {
+        logger.info("connect dest: {}", String.format("%s:%s", reqData.getRemoteHost(), reqData.getRemotePort()));
         DataClient destClient = new DataClient(new ChannelInitializer<SocketChannel>() {
             @Override
             protected void initChannel(SocketChannel channel) throws Exception {
@@ -120,22 +131,30 @@ public class AgentClientHandler extends ChannelInboundHandlerAdapter {
                         });
                         if (!destChannel.isActive()) {
                             destChannel.close();
-                            ConnectRespData respData = new ConnectRespData();
-                            respData.setProxyType(reqData.getProxyType());
-                            respData.setSessionId(reqData.getSessionId());
-                            respData.setCode(404);
-                            tunnelChannel.writeAndFlush(gson.toJson(respData));
+                            TcpProtos.TcpMessage tcpMessage = TcpProtos.TcpMessage.newBuilder()
+                                    .setType(TcpProtos.DataType.ConnectResp)
+                                    .setData(TcpProtos.ConnectRespData.newBuilder()
+                                            .setProxyType(reqData.getProxyType())
+                                            .setSessionId(reqData.getSessionId())
+                                            .setCode(404)
+                                            .build().toByteString())
+                                    .build();
+                            tunnelChannel.writeAndFlush(tcpMessage);
                             tunnelChannel.close();
                             return;
                         }
-                        destChannel.pipeline().addLast(new DataTunnel(reqData.getSessionId(), "dest2tunnel", tunnelChannel));
-                        tunnelChannel.pipeline().addLast(new DataTunnel(reqData.getSessionId(), "tunnel2dest", destChannel));
-                        ConnectRespData respData = new ConnectRespData();
-                        respData.setProxyType(reqData.getProxyType());
-                        respData.setSessionId(reqData.getSessionId());
-                        respData.setCode(200);
-                        tunnelChannel.writeAndFlush(gson.toJson(respData));
-                        tunnelChannel.pipeline().remove("encode");
+                        destChannel.pipeline().addLast(new EncodeTunnelHandler(reqData.getSessionId(), "dest2tunnel", tunnelChannel));
+                        tunnelChannel.pipeline().addLast(new DecodeTunnelHandler(reqData.getSessionId(), "tunnel2dest", destChannel));
+
+                        TcpProtos.TcpMessage tcpMessage = TcpProtos.TcpMessage.newBuilder()
+                                .setType(TcpProtos.DataType.ConnectResp)
+                                .setData(TcpProtos.ConnectRespData.newBuilder()
+                                        .setProxyType(reqData.getProxyType())
+                                        .setSessionId(reqData.getSessionId())
+                                        .setCode(200)
+                                        .build().toByteString())
+                                .build();
+                        tunnelChannel.writeAndFlush(tcpMessage);
                     }
                 });
     }

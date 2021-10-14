@@ -1,0 +1,39 @@
+syntax = "proto2";
+option java_package = "io.jaspercloud.proxy.core.proto";
+option java_outer_classname = "TcpProtos";
+
+enum DataType {
+    Heart = 1;
+    ConnectReq = 2;
+    ConnectResp = 3;
+    TunnelData = 4;
+}
+
+enum ProxyType {
+    Simple = 1;
+    Socks5 = 2;
+}
+
+message TcpMessage {
+    required DataType type = 1;
+    optional bytes data = 2;
+}
+
+message ConnectReqData {
+    required ProxyType proxyType = 1;
+    required string sessionId = 2;
+    required string remoteHost = 3;
+    required int32 remotePort = 4;
+    required string tunnelHost = 5;
+    required int32 tunnelPort = 6;
+}
+
+message ConnectRespData {
+    required ProxyType proxyType = 1;
+    required string sessionId = 2;
+    required int32 code = 3;
+}
+
+message TunnelHeart {
+    required string sessionId = 1;
+}

@@ -1,8 +1,7 @@
 package io.jaspercloud.proxy.support.proxy;
 
-import com.google.gson.Gson;
-import io.jaspercloud.proxy.core.dto.ConnectReqData;
 import io.jaspercloud.proxy.core.exception.ProcessException;
+import io.jaspercloud.proxy.core.proto.TcpProtos;
 import io.jaspercloud.proxy.support.agent.server.AgentManager;
 import io.jaspercloud.proxy.support.tunnel.TunnelManager;
 import io.netty.channel.Channel;
@@ -45,8 +44,6 @@ public class ProxyProcessHandler extends ChannelInboundHandlerAdapter {
     @Value("${proxy.allow.hosts}")
     private String[] allowHosts;
 
-    private Gson gson = new Gson();
-
     private boolean enableProxy;
 
     public boolean isEnableProxy() {
@@ -85,15 +82,16 @@ public class ProxyProcessHandler extends ChannelInboundHandlerAdapter {
         logger.info("remote address: {}", proxyChannel.remoteAddress().toString());
         tunnelManager.addProxyClient(proxyChannel);
         Channel agentChannel = agentManager.randomChannel();
-        ConnectReqData connectData = new ConnectReqData();
-        connectData.setProxyType(ConnectReqData.ProxyType.Simple);
-        connectData.setSessionId(proxyChannel.id().asShortText());
-        connectData.setRemoteHost(remoteHost);
-        connectData.setRemotePort(remotePort);
-        connectData.setTunnelHost(tunnelHost);
-        connectData.setTunnelPort(tunnelPort);
-        String data = gson.toJson(connectData);
-        agentChannel.writeAndFlush(data);
+        agentChannel.writeAndFlush(TcpProtos.TcpMessage.newBuilder()
+                .setType(TcpProtos.DataType.ConnectReq)
+                .setData(TcpProtos.ConnectReqData.newBuilder()
+                        .setProxyType(TcpProtos.ProxyType.Simple)
+                        .setSessionId(proxyChannel.id().asShortText())
+                        .setRemoteHost(remoteHost)
+                        .setRemotePort(remotePort)
+                        .setTunnelHost(tunnelHost)
+                        .setTunnelPort(tunnelPort).build().toByteString()));
+        logger.info("connect dest: {}", String.format("%s:%s", remoteHost, remotePort));
         //wait connect
         proxyChannel.config().setAutoRead(false);
     }

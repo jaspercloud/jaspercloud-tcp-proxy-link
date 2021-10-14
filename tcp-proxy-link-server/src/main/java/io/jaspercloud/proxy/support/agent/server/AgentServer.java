@@ -1,8 +1,7 @@
 package io.jaspercloud.proxy.support.agent.server;
 
+import io.jaspercloud.proxy.core.proto.TcpProtos;
 import io.jaspercloud.proxy.core.support.LogHandler;
-import io.jaspercloud.proxy.core.support.agent.DataDecodeHandler;
-import io.jaspercloud.proxy.core.support.agent.DataEncodeHandler;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.Channel;
@@ -13,6 +12,10 @@ import io.netty.channel.WriteBufferWaterMark;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.protobuf.ProtobufDecoder;
+import io.netty.handler.codec.protobuf.ProtobufEncoder;
+import io.netty.handler.codec.protobuf.ProtobufVarint32FrameDecoder;
+import io.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepender;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
@@ -64,8 +67,10 @@ public class AgentServer implements InitializingBean {
                         protected void initChannel(SocketChannel channel) throws Exception {
                             ChannelPipeline pipeline = channel.pipeline();
                             pipeline.addLast(new LogHandler("agent"));
-                            pipeline.addLast(new DataDecodeHandler());
-                            pipeline.addLast(new DataEncodeHandler());
+                            pipeline.addLast(new ProtobufVarint32FrameDecoder());
+                            pipeline.addLast(new ProtobufDecoder(TcpProtos.TcpMessage.getDefaultInstance()));
+                            pipeline.addLast(new ProtobufVarint32LengthFieldPrepender());
+                            pipeline.addLast(new ProtobufEncoder());
                             pipeline.addLast(agentProcessHandler);
                         }
                     });

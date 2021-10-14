@@ -1,7 +1,6 @@
 package io.jaspercloud.proxy.support.socks5;
 
-import com.google.gson.Gson;
-import io.jaspercloud.proxy.core.dto.ConnectReqData;
+import io.jaspercloud.proxy.core.proto.TcpProtos;
 import io.jaspercloud.proxy.support.agent.server.AgentManager;
 import io.jaspercloud.proxy.support.tunnel.TunnelManager;
 import io.netty.channel.Channel;
@@ -28,8 +27,6 @@ public class Socks5CommandRequestHandler extends SimpleChannelInboundHandler<Soc
     @Value("${tunnel.remote.port}")
     private int tunnelPort;
 
-    private Gson gson = new Gson();
-
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, Socks5CommandRequest msg) throws Exception {
         String remoteHost = msg.dstAddr();
@@ -38,14 +35,14 @@ public class Socks5CommandRequestHandler extends SimpleChannelInboundHandler<Soc
         proxyChannel.attr(AttributeKey.valueOf("dstAddrType")).set(msg.dstAddrType());
         tunnelManager.addProxyClient(proxyChannel);
         Channel agentChannel = agentManager.randomChannel();
-        ConnectReqData connectData = new ConnectReqData();
-        connectData.setProxyType(ConnectReqData.ProxyType.Socks5);
-        connectData.setSessionId(proxyChannel.id().asShortText());
-        connectData.setRemoteHost(remoteHost);
-        connectData.setRemotePort(remotePort);
-        connectData.setTunnelHost(tunnelHost);
-        connectData.setTunnelPort(tunnelPort);
-        String data = gson.toJson(connectData);
-        agentChannel.writeAndFlush(data);
+        agentChannel.writeAndFlush(TcpProtos.TcpMessage.newBuilder()
+                .setType(TcpProtos.DataType.ConnectReq)
+                .setData(TcpProtos.ConnectReqData.newBuilder()
+                        .setProxyType(TcpProtos.ProxyType.Socks5)
+                        .setSessionId(proxyChannel.id().asShortText())
+                        .setRemoteHost(remoteHost)
+                        .setRemotePort(remotePort)
+                        .setTunnelHost(tunnelHost)
+                        .setTunnelPort(tunnelPort).build().toByteString()));
     }
 }

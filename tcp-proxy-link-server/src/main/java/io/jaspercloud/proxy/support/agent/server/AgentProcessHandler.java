@@ -1,8 +1,6 @@
 package io.jaspercloud.proxy.support.agent.server;
 
-import com.google.gson.Gson;
-import io.jaspercloud.proxy.core.dto.ConnectRespData;
-import io.jaspercloud.proxy.core.dto.Data;
+import io.jaspercloud.proxy.core.proto.TcpProtos;
 import io.jaspercloud.proxy.support.tunnel.TunnelManager;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
@@ -25,8 +23,6 @@ public class AgentProcessHandler extends ChannelInboundHandlerAdapter {
     @Autowired
     private TunnelManager tunnelManager;
 
-    private Gson gson = new Gson();
-
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         agentManager.addChannel(ctx.channel());
@@ -34,17 +30,17 @@ public class AgentProcessHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        Data data = gson.fromJson((String) msg, Data.class);
-        logger.info("channelRead type: {}", data.getType());
-        switch (data.getType()) {
-            case Data.Type.Heart: {
+        TcpProtos.TcpMessage tcpMessage = (TcpProtos.TcpMessage) msg;
+        logger.info("channelRead type: {}", tcpMessage.getType());
+        switch (tcpMessage.getType().getNumber()) {
+            case TcpProtos.DataType.Heart_VALUE: {
                 logger.info("updateHeart: {}", ctx.channel().id().asShortText());
                 agentManager.updateHeart(ctx.channel().id().asShortText());
                 break;
             }
-            case Data.Type.ConnectResp: {
+            case TcpProtos.DataType.ConnectResp_VALUE: {
                 logger.info("connectResp: {}", ctx.channel().id().asShortText());
-                ConnectRespData respData = gson.fromJson((String) msg, ConnectRespData.class);
+                TcpProtos.ConnectRespData respData = TcpProtos.ConnectRespData.parseFrom(tcpMessage.getData());
                 Channel proxyClient = tunnelManager.getProxyClient(respData.getSessionId());
                 if (null != proxyClient) {
                     proxyClient.close();

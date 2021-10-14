@@ -1,10 +1,8 @@
 package io.jaspercloud.proxy.support.tunnel;
 
-import com.google.gson.Gson;
-import io.jaspercloud.proxy.core.dto.ConnectReqData;
-import io.jaspercloud.proxy.core.dto.ConnectRespData;
-import io.jaspercloud.proxy.core.dto.Data;
-import io.jaspercloud.proxy.core.support.tunnel.DataTunnel;
+import io.jaspercloud.proxy.core.proto.TcpProtos;
+import io.jaspercloud.proxy.core.support.tunnel.DecodeTunnelHandler;
+import io.jaspercloud.proxy.core.support.tunnel.EncodeTunnelHandler;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -29,21 +27,19 @@ public class TunnelProcessHandler extends ChannelInboundHandlerAdapter {
     @Autowired
     private TunnelManager tunnelManager;
 
-    private Gson gson = new Gson();
-
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        Data data = gson.fromJson((String) msg, Data.class);
-        switch (data.getType()) {
-            case Data.Type.ConnectResp: {
-                ConnectRespData respData = gson.fromJson((String) msg, ConnectRespData.class);
+        TcpProtos.TcpMessage tcpMessage = (TcpProtos.TcpMessage) msg;
+        switch (tcpMessage.getType().getNumber()) {
+            case TcpProtos.DataType.ConnectResp_VALUE: {
+                TcpProtos.ConnectRespData respData = TcpProtos.ConnectRespData.parseFrom(tcpMessage.getData());
                 processConnectResp(ctx, respData);
                 break;
             }
         }
     }
 
-    private void processConnectResp(ChannelHandlerContext ctx, ConnectRespData respData) throws Exception {
+    private void processConnectResp(ChannelHandlerContext ctx, TcpProtos.ConnectRespData respData) throws Exception {
         logger.info("processConnectResp: {}", ctx.channel().id().asShortText());
         if (200 != respData.getCode()) {
             Channel proxyClient = tunnelManager.getProxyClient(respData.getSessionId());
@@ -54,27 +50,23 @@ public class TunnelProcessHandler extends ChannelInboundHandlerAdapter {
             return;
         }
         Channel proxyChannel = tunnelManager.getProxyClient(respData.getSessionId());
-        switch (respData.getProxyType()) {
-            case ConnectReqData.ProxyType.Simple: {
+        switch (respData.getProxyType().getNumber()) {
+            case TcpProtos.ProxyType.Simple_VALUE: {
                 ChannelPipeline pipeline = ctx.pipeline();
-                pipeline.addLast(new DataTunnel(respData.getSessionId(), "tunnel2proxy", proxyChannel));
+                pipeline.addLast(new DecodeTunnelHandler(respData.getSessionId(), "tunnel2proxy", proxyChannel));
                 proxyChannel.pipeline().remove("init");
-                proxyChannel.pipeline().addLast(new DataTunnel(respData.getSessionId(), "proxy2tunnel", ctx.channel()));
+                proxyChannel.pipeline().addLast(new EncodeTunnelHandler(respData.getSessionId(), "proxy2tunnel", ctx.channel()));
 
                 pipeline.remove("init");
-                pipeline.remove("decode");
-                pipeline.remove("encode");
                 proxyChannel.config().setAutoRead(true);
                 break;
             }
-            case ConnectReqData.ProxyType.Socks5: {
+            case TcpProtos.ProxyType.Socks5_VALUE: {
                 ChannelPipeline pipeline = ctx.pipeline();
-                pipeline.addLast(new DataTunnel(respData.getSessionId(), "tunnel2proxy", proxyChannel));
-                proxyChannel.pipeline().addLast(new DataTunnel(respData.getSessionId(), "proxy2tunnel", ctx.channel()));
+                pipeline.addLast(new DecodeTunnelHandler(respData.getSessionId(), "tunnel2proxy", proxyChannel));
+                proxyChannel.pipeline().addLast(new EncodeTunnelHandler(respData.getSessionId(), "proxy2tunnel", ctx.channel()));
 
                 pipeline.remove("init");
-                pipeline.remove("decode");
-                pipeline.remove("encode");
 
                 Socks5AddressType addressType = (Socks5AddressType) proxyChannel.attr(AttributeKey.valueOf("dstAddrType")).get();
                 Socks5CommandResponse response = new DefaultSocks5CommandResponse(Socks5CommandStatus.SUCCESS, addressType);
