@@ -23,3 +23,7 @@
 /tcp-proxy-link-server/mvnw
 /.idea
 /.gitignore
+/tcp-proxy-link-agent/.gitignore
+/tcp-proxy-link-agent/mvnw
+/tcp-proxy-link-agent/mvnw.cmd
+/tcp-proxy-link-agent/.mvn
