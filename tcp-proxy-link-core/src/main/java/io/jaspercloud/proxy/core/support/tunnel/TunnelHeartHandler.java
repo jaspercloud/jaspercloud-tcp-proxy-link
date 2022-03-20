@@ -35,7 +35,7 @@ public class TunnelHeartHandler extends ChannelInboundHandlerAdapter {
                                 .setSessionId(sessionId)
                                 .build().toByteString())
                         .build();
-                logger.info("send tunnel heart: sessionId={}", sessionId);
+                logger.info("tunnelHeart: sessionId={}", sessionId);
                 ctx.writeAndFlush(tcpMessage);
             } catch (Exception e) {
                 logger.error(e.getMessage(), e);

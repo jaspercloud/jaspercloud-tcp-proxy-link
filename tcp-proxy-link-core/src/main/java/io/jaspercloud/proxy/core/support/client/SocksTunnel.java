@@ -86,12 +86,6 @@ public class SocksTunnel {
                     }
                 });
         ChannelFuture future = bootstrap.connect(address);
-        future.channel().closeFuture().addListener(new ChannelFutureListener() {
-            @Override
-            public void operationComplete(ChannelFuture future) throws Exception {
-                logger.info(String.format("SocksTunnel disconnect"));
-            }
-        });
         return future;
     }
 }

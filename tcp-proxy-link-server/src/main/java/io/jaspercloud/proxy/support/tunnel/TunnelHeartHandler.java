@@ -16,7 +16,7 @@ public class TunnelHeartHandler extends ChannelInboundHandlerAdapter {
         switch (tcpMessage.getType().getNumber()) {
             case TcpProtos.DataType.Heart_VALUE: {
                 TcpProtos.TunnelHeart tunnelHeart = TcpProtos.TunnelHeart.parseFrom(tcpMessage.getData());
-                logger.info("tunnel heart: sessionId={}", tunnelHeart.getSessionId());
+                logger.info("tunnelHeart: sessionId={}", tunnelHeart.getSessionId());
                 break;
             }
             default: {
