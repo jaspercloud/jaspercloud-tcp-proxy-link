@@ -1,11 +1,11 @@
-package io.jaspercloud.proxy.core.support.agent.client;
+package io.jaspercloud.proxy.core.support.agent;
 
 import io.jaspercloud.proxy.core.proto.TcpProtos;
 import io.jaspercloud.proxy.core.support.LogHandler;
-import io.jaspercloud.proxy.core.support.tunnel.DataClient;
+import io.jaspercloud.proxy.core.support.tunnel.DataTunnel;
 import io.jaspercloud.proxy.core.support.tunnel.DecodeTunnelHandler;
 import io.jaspercloud.proxy.core.support.tunnel.EncodeTunnelHandler;
-import io.jaspercloud.proxy.core.support.tunnel.SendTunnelHeartHandler;
+import io.jaspercloud.proxy.core.support.tunnel.TunnelHeartHandler;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -21,35 +21,36 @@ import io.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepender;
 import io.netty.util.concurrent.ScheduledFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.concurrent.TimeUnit;
 
 
-public class AgentClientHandler extends ChannelInboundHandlerAdapter {
+public class AgentHandler extends ChannelInboundHandlerAdapter {
 
     private Logger logger = LoggerFactory.getLogger(getClass());
 
-    @Value("${agent.connectTimeout}")
-    private int connectTimeout;
-
+    private AgentProperties agentProperties;
     private ScheduledFuture<?> fixedRate;
 
-    private long heartTime;
-
-    public AgentClientHandler(long heartTime) {
-        this.heartTime = heartTime;
+    public AgentHandler(AgentProperties agentProperties) {
+        this.agentProperties = agentProperties;
     }
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        fixedRate = ctx.executor().scheduleAtFixedRate(() -> {
+        Runnable runnable = () -> {
             ctx.writeAndFlush(TcpProtos.TcpMessage.newBuilder()
                     .setType(TcpProtos.DataType.Heart)
+                    .setData(TcpProtos.AgentInfo.newBuilder()
+                            .setUsername(agentProperties.getUsername())
+                            .setPassword(agentProperties.getPassword())
+                            .build().toByteString())
                     .build());
-        }, 0, heartTime, TimeUnit.MILLISECONDS);
+        };
+        runnable.run();
+        fixedRate = ctx.executor().scheduleAtFixedRate(runnable, agentProperties.getHeartTime(), agentProperties.getHeartTime(), TimeUnit.MILLISECONDS);
     }
 
     @Override
@@ -63,7 +64,7 @@ public class AgentClientHandler extends ChannelInboundHandlerAdapter {
         logger.info("channelRead type: {}", tcpMessage.getType());
         switch (tcpMessage.getType().getNumber()) {
             case TcpProtos.DataType.ConnectReq_VALUE: {
-                logger.info("connectReq: {}", ctx.channel().id().asShortText());
+                logger.info("connectReq: id={}", ctx.channel().id().asShortText());
                 TcpProtos.ConnectReqData reqData = TcpProtos.ConnectReqData.parseFrom(tcpMessage.getData());
                 connectTunnel(ctx.channel(), reqData);
                 break;
@@ -72,19 +73,19 @@ public class AgentClientHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void connectTunnel(Channel agentChannel, TcpProtos.ConnectReqData reqData) throws Exception {
-        DataClient tunnelClient = new DataClient(new ChannelInitializer<SocketChannel>() {
+        DataTunnel proxyTunnel = new DataTunnel(new ChannelInitializer<SocketChannel>() {
             @Override
             protected void initChannel(SocketChannel channel) throws Exception {
                 ChannelPipeline pipeline = channel.pipeline();
-                pipeline.addLast(new LogHandler("tunnel"));
+                pipeline.addLast(new LogHandler("proxyTunnel"));
                 pipeline.addLast(new ProtobufVarint32FrameDecoder());
                 pipeline.addLast(new ProtobufDecoder(TcpProtos.TcpMessage.getDefaultInstance()));
                 pipeline.addLast(new ProtobufVarint32LengthFieldPrepender());
                 pipeline.addLast(new ProtobufEncoder());
-                pipeline.addLast(new SendTunnelHeartHandler(reqData.getSessionId(), heartTime));
+                pipeline.addLast(new TunnelHeartHandler(reqData.getSessionId(), agentProperties));
             }
         });
-        tunnelClient.connect(new InetSocketAddress(reqData.getTunnelHost(), reqData.getTunnelPort()), connectTimeout)
+        proxyTunnel.connect(new InetSocketAddress(agentProperties.getServerHost(), agentProperties.getTunnelPort()), agentProperties.getConnectTimeout())
                 .addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {
@@ -109,15 +110,15 @@ public class AgentClientHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void connectDest(Channel tunnelChannel, TcpProtos.ConnectReqData reqData) throws Exception {
-        logger.info("connect dest: {}", String.format("%s:%s", reqData.getRemoteHost(), reqData.getRemotePort()));
-        DataClient destClient = new DataClient(new ChannelInitializer<SocketChannel>() {
+        logger.info("connect dest: {}", String.format("%s:%s", reqData.getDestHost(), reqData.getDestPort()));
+        DataTunnel destTunnel = new DataTunnel(new ChannelInitializer<SocketChannel>() {
             @Override
             protected void initChannel(SocketChannel channel) throws Exception {
                 ChannelPipeline pipeline = channel.pipeline();
-                pipeline.addLast(new LogHandler("dest"));
+                pipeline.addLast(new LogHandler("destTunnel"));
             }
         });
-        destClient.connect(new InetSocketAddress(reqData.getRemoteHost(), reqData.getRemotePort()), connectTimeout)
+        destTunnel.connect(new InetSocketAddress(reqData.getDestHost(), reqData.getDestPort()), agentProperties.getConnectTimeout())
                 .addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {

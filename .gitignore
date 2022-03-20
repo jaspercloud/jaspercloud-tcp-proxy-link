@@ -21,3 +21,5 @@
 /tcp-proxy-link-server/.gitignore
 /tcp-proxy-link-server/HELP.md
 /tcp-proxy-link-server/mvnw
+/.idea
+/.gitignore

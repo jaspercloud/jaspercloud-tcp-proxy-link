@@ -1,13 +1,13 @@
 package io.jaspercloud.proxy.support.socks5;
 
+import io.jaspercloud.proxy.config.ProxyServerProperties;
 import io.jaspercloud.proxy.core.support.LogHandler;
 import io.netty.bootstrap.ServerBootstrap;
-import io.netty.buffer.UnpooledByteBufAllocator;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
-import io.netty.channel.WriteBufferWaterMark;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -25,24 +25,21 @@ public class Socks5Server implements InitializingBean {
     private Logger logger = LoggerFactory.getLogger(getClass());
 
     @Autowired
-    private Socks5PasswordAuthRequestHandler socks5PasswordAuthRequestHandler;
+    private Socks5ServerHandler socks5ServerHandler;
 
-    @Autowired
-    private Socks5CommandRequestHandler socks5CommandRequestHandler;
-
-    private int port;
+    private ProxyServerProperties serverProperties;
 
     private Channel channel;
 
-    public Socks5Server(int port) {
-        this.port = port;
+    public Socks5Server(ProxyServerProperties serverProperties) {
+        this.serverProperties = serverProperties;
     }
 
     @Override
     public void afterPropertiesSet() throws Exception {
         new Thread(() -> {
             try {
-                startServer(port);
+                startServer(serverProperties.getSocks5Port());
             } catch (Exception e) {
                 logger.error(e.getMessage(), e);
             }
@@ -60,10 +57,8 @@ public class Socks5Server implements InitializingBean {
                     .option(ChannelOption.SO_REUSEADDR, true)
                     .childOption(ChannelOption.TCP_NODELAY, true)
                     .childOption(ChannelOption.SO_KEEPALIVE, true)
-                    .childOption(ChannelOption.WRITE_BUFFER_WATER_MARK,
-                            new WriteBufferWaterMark(32 * 1024, 64 * 1024))
-                    .option(ChannelOption.ALLOCATOR, UnpooledByteBufAllocator.DEFAULT)
-                    .childOption(ChannelOption.ALLOCATOR, UnpooledByteBufAllocator.DEFAULT)
+                    .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
+                    .childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
                     .childHandler(new ChannelInitializer<SocketChannel>() {
                         @Override
                         protected void initChannel(SocketChannel channel) throws Exception {
@@ -71,11 +66,9 @@ public class Socks5Server implements InitializingBean {
                             pipeline.addLast(new LogHandler("socks5"));
                             pipeline.addLast(Socks5ServerEncoder.DEFAULT);
                             pipeline.addLast(new Socks5InitialRequestDecoder());
-                            pipeline.addLast(new Socks5InitialRequestHandler());
                             pipeline.addLast(new Socks5PasswordAuthRequestDecoder());
-                            pipeline.addLast(socks5PasswordAuthRequestHandler);
                             pipeline.addLast(new Socks5CommandRequestDecoder());
-                            pipeline.addLast(socks5CommandRequestHandler);
+                            pipeline.addLast(socks5ServerHandler);
                         }
                     });
             channel = serverBootstrap.bind(port).sync().channel();

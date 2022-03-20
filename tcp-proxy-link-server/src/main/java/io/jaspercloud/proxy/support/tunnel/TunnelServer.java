@@ -1,14 +1,14 @@
 package io.jaspercloud.proxy.support.tunnel;
 
+import io.jaspercloud.proxy.config.ProxyServerProperties;
 import io.jaspercloud.proxy.core.proto.TcpProtos;
 import io.jaspercloud.proxy.core.support.LogHandler;
 import io.netty.bootstrap.ServerBootstrap;
-import io.netty.buffer.UnpooledByteBufAllocator;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
-import io.netty.channel.WriteBufferWaterMark;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -28,18 +28,18 @@ public class TunnelServer implements InitializingBean {
     @Autowired
     private TunnelProcessHandler tunnelProcessHandler;
 
-    private int port;
+    private ProxyServerProperties serverProperties;
     private Channel channel;
 
-    public TunnelServer(int port) {
-        this.port = port;
+    public TunnelServer(ProxyServerProperties serverProperties) {
+        this.serverProperties = serverProperties;
     }
 
     @Override
     public void afterPropertiesSet() throws Exception {
         new Thread(() -> {
             try {
-                startServer(port);
+                startServer(serverProperties.getTunnelPort());
             } catch (Exception e) {
                 logger.error(e.getMessage(), e);
             }
@@ -57,10 +57,8 @@ public class TunnelServer implements InitializingBean {
                     .option(ChannelOption.SO_REUSEADDR, true)
                     .childOption(ChannelOption.TCP_NODELAY, true)
                     .childOption(ChannelOption.SO_KEEPALIVE, true)
-                    .childOption(ChannelOption.WRITE_BUFFER_WATER_MARK,
-                            new WriteBufferWaterMark(32 * 1024, 64 * 1024))
-                    .option(ChannelOption.ALLOCATOR, UnpooledByteBufAllocator.DEFAULT)
-                    .childOption(ChannelOption.ALLOCATOR, UnpooledByteBufAllocator.DEFAULT)
+                    .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
+                    .childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
                     .childHandler(new ChannelInitializer<SocketChannel>() {
                         @Override
                         protected void initChannel(SocketChannel channel) throws Exception {

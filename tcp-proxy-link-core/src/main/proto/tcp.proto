@@ -10,8 +10,7 @@ enum DataType {
 }
 
 enum ProxyType {
-    Simple = 1;
-    Socks5 = 2;
+    Socks5 = 1;
 }
 
 message TcpMessage {
@@ -19,13 +18,16 @@ message TcpMessage {
     optional bytes data = 2;
 }
 
+message AgentInfo {
+    required string username = 1;
+    required string password = 2;
+}
+
 message ConnectReqData {
     required ProxyType proxyType = 1;
     required string sessionId = 2;
-    required string remoteHost = 3;
-    required int32 remotePort = 4;
-    required string tunnelHost = 5;
-    required int32 tunnelPort = 6;
+    required string destHost = 3;
+    required int32 destPort = 4;
 }
 
 message ConnectRespData {

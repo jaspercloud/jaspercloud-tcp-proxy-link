@@ -2,6 +2,7 @@ package io.jaspercloud.proxy.support.agent.server;
 
 import io.jaspercloud.proxy.core.proto.TcpProtos;
 import io.jaspercloud.proxy.support.tunnel.TunnelManager;
+import io.jaspercloud.proxy.util.AttributeKeys;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -31,15 +32,18 @@ public class AgentProcessHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         TcpProtos.TcpMessage tcpMessage = (TcpProtos.TcpMessage) msg;
+        Channel agentChannel = ctx.channel();
         logger.info("channelRead type: {}", tcpMessage.getType());
         switch (tcpMessage.getType().getNumber()) {
             case TcpProtos.DataType.Heart_VALUE: {
-                logger.info("updateHeart: {}", ctx.channel().id().asShortText());
-                agentManager.updateHeart(ctx.channel().id().asShortText());
+                logger.info("updateHeart: {}", agentChannel.id().asShortText());
+                TcpProtos.AgentInfo agentInfo = TcpProtos.AgentInfo.parseFrom(tcpMessage.getData());
+                AttributeKeys.agentInfo(agentChannel).set(agentInfo);
+                agentManager.updateHeart(agentChannel.id().asShortText());
                 break;
             }
             case TcpProtos.DataType.ConnectResp_VALUE: {
-                logger.info("connectResp: {}", ctx.channel().id().asShortText());
+                logger.info("connectResp: {}", agentChannel.id().asShortText());
                 TcpProtos.ConnectRespData respData = TcpProtos.ConnectRespData.parseFrom(tcpMessage.getData());
                 Channel proxyClient = tunnelManager.getProxyClient(respData.getSessionId());
                 if (null != proxyClient) {

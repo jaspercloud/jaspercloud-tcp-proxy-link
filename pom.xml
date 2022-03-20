@@ -4,16 +4,49 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.jaspercloud</groupId>
     <artifactId>tcp-proxy-link</artifactId>
-    <version>1.0.0</version>
+    <version>${revision}</version>
     <packaging>pom</packaging>
+
     <properties>
         <java.version>1.8</java.version>
+        <revision>2.0.0</revision>
     </properties>
 
     <modules>
         <module>tcp-proxy-link-core</module>
-        <module>tcp-proxy-link-client</module>
+        <module>tcp-proxy-link-agent</module>
         <module>tcp-proxy-link-server</module>
+        <module>tcp-proxy-link-client</module>
     </modules>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <version>1.1.0</version>
+                <configuration>
+                    <updatePomFile>true</updatePomFile>
+                    <flattenMode>oss</flattenMode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

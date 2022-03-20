@@ -1,18 +1,19 @@
 package io.jaspercloud.proxy.support.agent.server;
 
-import io.jaspercloud.proxy.core.exception.ProcessException;
+import io.jaspercloud.proxy.config.ProxyServerProperties;
+import io.jaspercloud.proxy.core.proto.TcpProtos;
+import io.jaspercloud.proxy.util.AttributeKeys;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.util.AttributeKey;
-import org.apache.commons.lang.math.RandomUtils;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -20,7 +21,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.stream.Collectors;
 
 public class AgentManager implements InitializingBean {
 
@@ -29,11 +29,8 @@ public class AgentManager implements InitializingBean {
     private Map<String, Channel> channelMap = new ConcurrentHashMap<>();
     private Lock lock = new ReentrantLock();
 
-    @Value("${agent.checkTime}")
-    private long checkTime;
-
-    @Value("${agent.timeout}")
-    private long timeout;
+    @Autowired
+    private ProxyServerProperties serverProperties;
 
     @Override
     public void afterPropertiesSet() {
@@ -48,7 +45,7 @@ public class AgentManager implements InitializingBean {
                     Map.Entry<String, Channel> next = iterator.next();
                     Channel channel = next.getValue();
                     long time = (long) channel.attr(AttributeKey.valueOf("heart")).get();
-                    if ((System.currentTimeMillis() - time) >= timeout) {
+                    if ((System.currentTimeMillis() - time) >= serverProperties.getAgentTimeout()) {
                         logger.info("channel timeout: {}", channel.id().asShortText());
                         iterator.remove();
                         channel.close();
@@ -59,7 +56,7 @@ public class AgentManager implements InitializingBean {
             } finally {
                 lock.unlock();
             }
-        }, 0, checkTime, TimeUnit.MILLISECONDS);
+        }, 0, serverProperties.getAgentCheckTime(), TimeUnit.MILLISECONDS);
     }
 
     public void addChannel(Channel channel) {
@@ -93,13 +90,23 @@ public class AgentManager implements InitializingBean {
         }
     }
 
-    public Channel randomChannel() {
-        List<Channel> list = channelMap.values().stream().collect(Collectors.toList());
-        if (list.isEmpty()) {
-            throw new ProcessException("not found agent channel");
-        }
-        int rand = RandomUtils.nextInt(list.size());
-        Channel channel = list.get(rand);
+    public Channel queryChannel(String shortId) {
+        Channel channel = channelMap.get(shortId);
         return channel;
+    }
+
+    public Channel queryChannel(String username, String password) {
+        for (Channel channel : channelMap.values()) {
+            TcpProtos.AgentInfo agentInfo = AttributeKeys.agentInfo(channel).get();
+            if (null == agentInfo) {
+                continue;
+            }
+            if (1 == 1
+                    && StringUtils.equals(agentInfo.getUsername(), username)
+                    && StringUtils.equals(agentInfo.getPassword(), password)) {
+                return channel;
+            }
+        }
+        return null;
     }
 }
