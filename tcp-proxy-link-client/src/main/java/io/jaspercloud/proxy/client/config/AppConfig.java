@@ -1,6 +1,7 @@
 package io.jaspercloud.proxy.client.config;
 
-import io.jaspercloud.proxy.client.support.LocalServer;
+import io.jaspercloud.proxy.core.support.client.ClientProperties;
+import io.jaspercloud.proxy.core.support.client.LocalServer;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

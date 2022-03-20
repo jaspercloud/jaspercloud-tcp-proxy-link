@@ -1,4 +1,4 @@
-package io.jaspercloud.proxy.support.agent.server;
+package io.jaspercloud.proxy.support.agent;
 
 import io.jaspercloud.proxy.config.ProxyServerProperties;
 import io.jaspercloud.proxy.core.proto.TcpProtos;
@@ -6,7 +6,6 @@ import io.jaspercloud.proxy.util.AttributeKeys;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
-import io.netty.util.AttributeKey;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,15 +18,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class AgentManager implements InitializingBean {
 
     private Logger logger = LoggerFactory.getLogger(getClass());
 
     private Map<String, Channel> channelMap = new ConcurrentHashMap<>();
-    private Lock lock = new ReentrantLock();
 
     @Autowired
     private ProxyServerProperties serverProperties;
@@ -36,58 +32,41 @@ public class AgentManager implements InitializingBean {
     public void afterPropertiesSet() {
         ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
         scheduledExecutorService.scheduleAtFixedRate(() -> {
+            logger.info("online agent: {}", channelMap.size());
             try {
-                logger.info("scheduleAtFixedRate heart");
-                lock.lock();
-                logger.info("online agent: {}", channelMap.size());
                 Iterator<Map.Entry<String, Channel>> iterator = channelMap.entrySet().iterator();
                 while (iterator.hasNext()) {
                     Map.Entry<String, Channel> next = iterator.next();
                     Channel channel = next.getValue();
-                    long time = (long) channel.attr(AttributeKey.valueOf("heart")).get();
-                    if ((System.currentTimeMillis() - time) >= serverProperties.getAgentTimeout()) {
+                    Long lastTime = AttributeKeys.lastHeartTime(channel).get();
+                    if ((System.currentTimeMillis() - lastTime) >= serverProperties.getAgentTimeout()) {
                         logger.info("channel timeout: {}", channel.id().asShortText());
-                        iterator.remove();
                         channel.close();
                     }
                 }
             } catch (Exception e) {
                 logger.error(e.getMessage(), e);
-            } finally {
-                lock.unlock();
             }
         }, 0, serverProperties.getAgentCheckTime(), TimeUnit.MILLISECONDS);
     }
 
     public void addChannel(Channel channel) {
-        try {
-            lock.lock();
-            channel.closeFuture().addListener(new ChannelFutureListener() {
-                @Override
-                public void operationComplete(ChannelFuture future) throws Exception {
-                    channelMap.remove(channel.id().asShortText());
-                }
-            });
-            channel.attr(AttributeKey.valueOf("heart"))
-                    .set(System.currentTimeMillis());
-            channelMap.put(channel.id().asShortText(), channel);
-        } finally {
-            lock.unlock();
-        }
+        channel.closeFuture().addListener(new ChannelFutureListener() {
+            @Override
+            public void operationComplete(ChannelFuture future) throws Exception {
+                channelMap.remove(channel.id().asShortText());
+            }
+        });
+        AttributeKeys.lastHeartTime(channel).set(System.currentTimeMillis());
+        channelMap.put(channel.id().asShortText(), channel);
     }
 
     public void updateHeart(String id) {
-        try {
-            lock.lock();
-            Channel channel = channelMap.get(id);
-            if (null == channel) {
-                return;
-            }
-            channel.attr(AttributeKey.valueOf("heart"))
-                    .set(System.currentTimeMillis());
-        } finally {
-            lock.unlock();
+        Channel channel = channelMap.get(id);
+        if (null == channel) {
+            return;
         }
+        AttributeKeys.lastHeartTime(channel).set(System.currentTimeMillis());
     }
 
     public Channel queryChannel(String shortId) {

@@ -1,7 +1,8 @@
-package io.jaspercloud.proxy.client.support;
+package io.jaspercloud.proxy.core.support.client;
 
-import io.jaspercloud.proxy.client.config.ClientProperties;
+import io.jaspercloud.proxy.core.exception.ProcessException;
 import io.jaspercloud.proxy.core.support.LogHandler;
+import io.jaspercloud.proxy.core.support.NioEventLoopFactory;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.Channel;
@@ -13,7 +14,6 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.socksx.v5.DefaultSocks5InitialRequest;
@@ -40,17 +40,18 @@ public class SocksTunnel {
     }
 
     public ChannelFuture connect(InetSocketAddress address) throws Exception {
-        NioEventLoopGroup group = new NioEventLoopGroup(Runtime.getRuntime().availableProcessors());
         Bootstrap bootstrap = new Bootstrap();
-        bootstrap.group(group)
+        bootstrap.group(NioEventLoopFactory.WorkerGroup)
                 .channel(NioSocketChannel.class)
+                .option(ChannelOption.TCP_NODELAY, true)
+                .option(ChannelOption.SO_KEEPALIVE, true)
                 .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, clientProperties.getConnectTimeout())
                 .handler(new ChannelInitializer<SocketChannel>() {
                     @Override
                     protected void initChannel(SocketChannel channel) throws Exception {
                         ChannelPipeline pipeline = channel.pipeline();
-                        pipeline.addLast(new LogHandler("socks5"));
+                        pipeline.addLast(new LogHandler("socks5Tunnel"));
                         pipeline.addLast(Socks5ClientEncoder.DEFAULT);
                         pipeline.addLast(new Socks5InitialResponseDecoder());
                         pipeline.addLast(new Socks5PasswordAuthResponseDecoder());
@@ -69,6 +70,11 @@ public class SocksTunnel {
                                             return;
                                         }
                                         Channel channel = future.channel();
+                                        if (!channel.isActive()) {
+                                            future.channel().close();
+                                            promise.setFailure(new ProcessException("connection failed"));
+                                            return;
+                                        }
                                         ChannelPipeline pipeline = channel.pipeline();
                                         pipeline.addLast(new Socks5ClientHandler(clientProperties, promise));
                                         Socks5InitialRequest request = new DefaultSocks5InitialRequest(Socks5AuthMethod.NO_AUTH);
@@ -84,7 +90,6 @@ public class SocksTunnel {
             @Override
             public void operationComplete(ChannelFuture future) throws Exception {
                 logger.info(String.format("SocksTunnel disconnect"));
-                group.shutdownGracefully();
             }
         });
         return future;

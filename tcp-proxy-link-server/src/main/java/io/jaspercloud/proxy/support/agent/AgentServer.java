@@ -1,6 +1,7 @@
-package io.jaspercloud.proxy.support.socks5;
+package io.jaspercloud.proxy.support.agent;
 
 import io.jaspercloud.proxy.config.ProxyServerProperties;
+import io.jaspercloud.proxy.core.proto.TcpProtos;
 import io.jaspercloud.proxy.core.support.LogHandler;
 import io.jaspercloud.proxy.core.support.NioEventLoopFactory;
 import io.netty.bootstrap.ServerBootstrap;
@@ -11,25 +12,26 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.handler.codec.socksx.v5.Socks5CommandRequestDecoder;
-import io.netty.handler.codec.socksx.v5.Socks5InitialRequestDecoder;
-import io.netty.handler.codec.socksx.v5.Socks5PasswordAuthRequestDecoder;
-import io.netty.handler.codec.socksx.v5.Socks5ServerEncoder;
+import io.netty.handler.codec.protobuf.ProtobufDecoder;
+import io.netty.handler.codec.protobuf.ProtobufEncoder;
+import io.netty.handler.codec.protobuf.ProtobufVarint32FrameDecoder;
+import io.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepender;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 
-public class Socks5Server implements InitializingBean {
+
+public class AgentServer implements InitializingBean {
 
     private Logger logger = LoggerFactory.getLogger(getClass());
 
     @Autowired
-    private Socks5ServerHandler socks5ServerHandler;
+    private AgentProcessHandler agentHandler;
 
     private ProxyServerProperties serverProperties;
 
-    public Socks5Server(ProxyServerProperties serverProperties) {
+    public AgentServer(ProxyServerProperties serverProperties) {
         this.serverProperties = serverProperties;
     }
 
@@ -37,14 +39,14 @@ public class Socks5Server implements InitializingBean {
     public void afterPropertiesSet() throws Exception {
         new Thread(() -> {
             try {
-                startServer(serverProperties.getSocks5Port());
+                startServer(serverProperties.getAgentPort());
             } catch (Exception e) {
                 logger.error(e.getMessage(), e);
             }
         }).start();
     }
 
-    private void startServer(int port) throws Exception {
+    public void startServer(int port) throws Exception {
         ServerBootstrap serverBootstrap = new ServerBootstrap();
         serverBootstrap.group(NioEventLoopFactory.BossGroup, NioEventLoopFactory.WorkerGroup)
                 .channel(NioServerSocketChannel.class)
@@ -58,16 +60,16 @@ public class Socks5Server implements InitializingBean {
                     @Override
                     protected void initChannel(SocketChannel channel) throws Exception {
                         ChannelPipeline pipeline = channel.pipeline();
-                        pipeline.addLast(new LogHandler("socks5Server"));
-                        pipeline.addLast(Socks5ServerEncoder.DEFAULT);
-                        pipeline.addLast(new Socks5InitialRequestDecoder());
-                        pipeline.addLast(new Socks5PasswordAuthRequestDecoder());
-                        pipeline.addLast(new Socks5CommandRequestDecoder());
-                        pipeline.addLast(socks5ServerHandler);
+                        pipeline.addLast(new LogHandler("agentServer"));
+                        pipeline.addLast(new ProtobufVarint32FrameDecoder());
+                        pipeline.addLast(new ProtobufDecoder(TcpProtos.TcpMessage.getDefaultInstance()));
+                        pipeline.addLast(new ProtobufVarint32LengthFieldPrepender());
+                        pipeline.addLast(new ProtobufEncoder());
+                        pipeline.addLast(agentHandler);
                     }
                 });
         Channel channel = serverBootstrap.bind(port).sync().channel();
-        logger.info(String.format("Socks5Server started on port(s): %d", port));
+        logger.info(String.format("AgentServer started on port(s): %d", port));
         channel.closeFuture().sync();
     }
 }

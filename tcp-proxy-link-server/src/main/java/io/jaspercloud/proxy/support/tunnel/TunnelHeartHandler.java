@@ -6,7 +6,7 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class RecTunnelHeartHandler extends ChannelInboundHandlerAdapter {
+public class TunnelHeartHandler extends ChannelInboundHandlerAdapter {
 
     private Logger logger = LoggerFactory.getLogger(getClass());
 
@@ -16,7 +16,7 @@ public class RecTunnelHeartHandler extends ChannelInboundHandlerAdapter {
         switch (tcpMessage.getType().getNumber()) {
             case TcpProtos.DataType.Heart_VALUE: {
                 TcpProtos.TunnelHeart tunnelHeart = TcpProtos.TunnelHeart.parseFrom(tcpMessage.getData());
-                logger.info("rec tunnel heart: sessionId={}", tunnelHeart.getSessionId());
+                logger.info("tunnel heart: sessionId={}", tunnelHeart.getSessionId());
                 break;
             }
             default: {

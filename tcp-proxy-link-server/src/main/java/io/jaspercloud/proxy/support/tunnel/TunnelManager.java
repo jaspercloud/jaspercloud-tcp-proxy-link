@@ -11,26 +11,26 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class TunnelManager {
 
-    private Map<String, Channel> proxyClientMap = new ConcurrentHashMap<>();
+    private Map<String, Channel> proxyChannelMap = new ConcurrentHashMap<>();
     private Lock lock = new ReentrantLock();
 
-    public void addProxyClient(Channel channel) {
+    public void addProxyChannel(Channel channel) {
         try {
             lock.lock();
             channel.closeFuture().addListener(new ChannelFutureListener() {
                 @Override
                 public void operationComplete(ChannelFuture future) throws Exception {
-                    proxyClientMap.remove(channel.id().asShortText());
+                    proxyChannelMap.remove(channel.id().asShortText());
                 }
             });
-            proxyClientMap.put(channel.id().asShortText(), channel);
+            proxyChannelMap.put(channel.id().asShortText(), channel);
         } finally {
             lock.unlock();
         }
     }
 
-    public Channel getProxyClient(String id) {
-        Channel channel = proxyClientMap.get(id);
+    public Channel getProxyChannel(String id) {
+        Channel channel = proxyChannelMap.get(id);
         return channel;
     }
 }

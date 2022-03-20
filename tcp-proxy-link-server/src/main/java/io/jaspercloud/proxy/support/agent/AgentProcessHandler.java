@@ -1,4 +1,4 @@
-package io.jaspercloud.proxy.support.agent.server;
+package io.jaspercloud.proxy.support.agent;
 
 import io.jaspercloud.proxy.core.proto.TcpProtos;
 import io.jaspercloud.proxy.support.tunnel.TunnelManager;
@@ -45,12 +45,14 @@ public class AgentProcessHandler extends ChannelInboundHandlerAdapter {
             case TcpProtos.DataType.ConnectResp_VALUE: {
                 logger.info("connectResp: {}", agentChannel.id().asShortText());
                 TcpProtos.ConnectRespData respData = TcpProtos.ConnectRespData.parseFrom(tcpMessage.getData());
-                Channel proxyClient = tunnelManager.getProxyClient(respData.getSessionId());
+                Channel proxyClient = tunnelManager.getProxyChannel(respData.getSessionId());
                 if (null != proxyClient) {
                     proxyClient.close();
                 }
                 break;
             }
+            default:
+                throw new UnsupportedOperationException();
         }
     }
 

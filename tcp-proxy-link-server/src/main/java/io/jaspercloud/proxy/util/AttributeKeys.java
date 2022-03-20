@@ -26,4 +26,9 @@ public final class AttributeKeys {
         Attribute<Socks5AddressType> attr = channel.attr(AttributeKey.valueOf("dstAddrType"));
         return attr;
     }
+
+    public static Attribute<Long> lastHeartTime(Channel channel) {
+        Attribute<Long> attr = channel.attr(AttributeKey.valueOf("lastHeartTime"));
+        return attr;
+    }
 }

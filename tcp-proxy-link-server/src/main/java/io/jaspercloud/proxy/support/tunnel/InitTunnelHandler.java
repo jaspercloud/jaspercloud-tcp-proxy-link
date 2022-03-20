@@ -20,7 +20,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import java.io.IOException;
 
 @ChannelHandler.Sharable
-public class TunnelProcessHandler extends ChannelInboundHandlerAdapter {
+public class InitTunnelHandler extends ChannelInboundHandlerAdapter {
+
+    public static final String InitHandler = "initHandler";
 
     private Logger logger = LoggerFactory.getLogger(getClass());
 
@@ -42,22 +44,20 @@ public class TunnelProcessHandler extends ChannelInboundHandlerAdapter {
     private void processConnectResp(ChannelHandlerContext ctx, TcpProtos.ConnectRespData respData) throws Exception {
         logger.info("processConnectResp: {}", ctx.channel().id().asShortText());
         if (200 != respData.getCode()) {
-            Channel tunnelChannel = tunnelManager.getProxyClient(respData.getSessionId());
+            Channel tunnelChannel = tunnelManager.getProxyChannel(respData.getSessionId());
             if (null != tunnelChannel) {
-                logger.error("connect error: {}", tunnelChannel.id().asShortText());
+                logger.error("connect failed: {}", tunnelChannel.id().asShortText());
                 tunnelChannel.close();
             }
             return;
         }
-        Channel tunnelChannel = tunnelManager.getProxyClient(respData.getSessionId());
+        Channel tunnelChannel = tunnelManager.getProxyChannel(respData.getSessionId());
         switch (respData.getProxyType().getNumber()) {
             case TcpProtos.ProxyType.Socks5_VALUE: {
                 ChannelPipeline pipeline = ctx.pipeline();
                 pipeline.addLast(new DecodeTunnelHandler(respData.getSessionId(), "tunnel2proxy", tunnelChannel));
                 tunnelChannel.pipeline().addLast(new EncodeTunnelHandler(respData.getSessionId(), "proxy2tunnel", ctx.channel()));
-
-                pipeline.remove("init");
-
+                pipeline.remove(InitHandler);
                 Socks5AddressType dstAddrType = AttributeKeys.dstAddrType(tunnelChannel).get();
                 Socks5CommandResponse response = new DefaultSocks5CommandResponse(Socks5CommandStatus.SUCCESS, dstAddrType);
                 tunnelChannel.writeAndFlush(response);

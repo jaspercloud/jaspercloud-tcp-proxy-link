@@ -5,14 +5,13 @@ import io.jaspercloud.proxy.core.proto.TcpProtos;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.util.ReferenceCountUtil;
+import io.netty.channel.SimpleChannelInboundHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
-public class EncodeTunnelHandler extends ChannelInboundHandlerAdapter {
+public class EncodeTunnelHandler extends SimpleChannelInboundHandler<ByteBuf> {
 
     private Logger logger = LoggerFactory.getLogger(getClass());
     private String sessionId;
@@ -27,6 +26,7 @@ public class EncodeTunnelHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        logger.info("inactive sessionId={}, name={}", sessionId, name);
         dest.close();
     }
 
@@ -41,18 +41,13 @@ public class EncodeTunnelHandler extends ChannelInboundHandlerAdapter {
     }
 
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        ByteBuf buf = (ByteBuf) msg;
-        try {
-            byte[] bytes = new byte[buf.readableBytes()];
-            buf.readBytes(bytes);
-            TcpProtos.TcpMessage tcpMessage = TcpProtos.TcpMessage.newBuilder()
-                    .setType(TcpProtos.DataType.TunnelData)
-                    .setData(ByteString.copyFrom(bytes))
-                    .build();
-            dest.writeAndFlush(tcpMessage);
-        } finally {
-            ReferenceCountUtil.release(buf);
-        }
+    protected void channelRead0(ChannelHandlerContext ctx, ByteBuf msg) throws Exception {
+        byte[] bytes = new byte[msg.readableBytes()];
+        msg.readBytes(bytes);
+        TcpProtos.TcpMessage tcpMessage = TcpProtos.TcpMessage.newBuilder()
+                .setType(TcpProtos.DataType.TunnelData)
+                .setData(ByteString.copyFrom(bytes))
+                .build();
+        dest.writeAndFlush(tcpMessage);
     }
 }

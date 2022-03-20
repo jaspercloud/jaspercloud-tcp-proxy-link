@@ -1,4 +1,4 @@
-package io.jaspercloud.proxy.client.config;
+package io.jaspercloud.proxy.core.support.client;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

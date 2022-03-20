@@ -41,13 +41,17 @@ public class AgentHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         Runnable runnable = () -> {
-            ctx.writeAndFlush(TcpProtos.TcpMessage.newBuilder()
-                    .setType(TcpProtos.DataType.Heart)
-                    .setData(TcpProtos.AgentInfo.newBuilder()
-                            .setUsername(agentProperties.getUsername())
-                            .setPassword(agentProperties.getPassword())
-                            .build().toByteString())
-                    .build());
+            try {
+                ctx.channel().writeAndFlush(TcpProtos.TcpMessage.newBuilder()
+                        .setType(TcpProtos.DataType.Heart)
+                        .setData(TcpProtos.AgentInfo.newBuilder()
+                                .setUsername(agentProperties.getUsername())
+                                .setPassword(agentProperties.getPassword())
+                                .build().toByteString())
+                        .build());
+            } catch (Exception e) {
+                logger.error(e.getMessage(), e);
+            }
         };
         runnable.run();
         fixedRate = ctx.executor().scheduleAtFixedRate(runnable, agentProperties.getHeartTime(), agentProperties.getHeartTime(), TimeUnit.MILLISECONDS);
@@ -66,13 +70,14 @@ public class AgentHandler extends ChannelInboundHandlerAdapter {
             case TcpProtos.DataType.ConnectReq_VALUE: {
                 logger.info("connectReq: id={}", ctx.channel().id().asShortText());
                 TcpProtos.ConnectReqData reqData = TcpProtos.ConnectReqData.parseFrom(tcpMessage.getData());
-                connectTunnel(ctx.channel(), reqData);
+                connectProxyTunnel(ctx.channel(), reqData);
                 break;
             }
         }
     }
 
-    private void connectTunnel(Channel agentChannel, TcpProtos.ConnectReqData reqData) throws Exception {
+    private void connectProxyTunnel(Channel agentChannel, TcpProtos.ConnectReqData reqData) throws Exception {
+        logger.info("connect ProxyTunnel: {}", String.format("%s:%s", agentProperties.getServerHost(), agentProperties.getTunnelPort()));
         DataTunnel proxyTunnel = new DataTunnel(new ChannelInitializer<SocketChannel>() {
             @Override
             protected void initChannel(SocketChannel channel) throws Exception {
@@ -85,32 +90,36 @@ public class AgentHandler extends ChannelInboundHandlerAdapter {
                 pipeline.addLast(new TunnelHeartHandler(reqData.getSessionId(), agentProperties));
             }
         });
-        proxyTunnel.connect(new InetSocketAddress(agentProperties.getServerHost(), agentProperties.getTunnelPort()), agentProperties.getConnectTimeout())
-                .addListener(new ChannelFutureListener() {
-                    @Override
-                    public void operationComplete(ChannelFuture future) throws Exception {
-                        Channel tunnelChannel = future.channel();
-                        logger.info("tunnelChannel isActive={}", tunnelChannel.isActive());
-                        if (!tunnelChannel.isActive()) {
-                            tunnelChannel.close();
-                            TcpProtos.TcpMessage tcpMessage = TcpProtos.TcpMessage.newBuilder()
-                                    .setType(TcpProtos.DataType.ConnectResp)
-                                    .setData(TcpProtos.ConnectRespData.newBuilder()
-                                            .setProxyType(reqData.getProxyType())
-                                            .setSessionId(reqData.getSessionId())
-                                            .setCode(404)
-                                            .build().toByteString())
-                                    .build();
-                            agentChannel.writeAndFlush(tcpMessage);
-                            return;
-                        }
-                        connectDest(tunnelChannel, reqData);
-                    }
-                });
+        ChannelFuture future = proxyTunnel.connect(new InetSocketAddress(agentProperties.getServerHost(), agentProperties.getTunnelPort()), agentProperties.getConnectTimeout());
+        future.addListener(new ChannelFutureListener() {
+            @Override
+            public void operationComplete(ChannelFuture future) throws Exception {
+                Channel proxyChannel = future.channel();
+                logger.info("proxyTunnel isActive={}", proxyChannel.isActive());
+                if (!future.isSuccess()) {
+                    proxyChannel.close();
+                    return;
+                }
+                if (!proxyChannel.isActive()) {
+                    proxyChannel.close();
+                    TcpProtos.TcpMessage tcpMessage = TcpProtos.TcpMessage.newBuilder()
+                            .setType(TcpProtos.DataType.ConnectResp)
+                            .setData(TcpProtos.ConnectRespData.newBuilder()
+                                    .setProxyType(reqData.getProxyType())
+                                    .setSessionId(reqData.getSessionId())
+                                    .setCode(404)
+                                    .build().toByteString())
+                            .build();
+                    agentChannel.writeAndFlush(tcpMessage);
+                    return;
+                }
+                connectDestTunnel(proxyChannel, reqData);
+            }
+        });
     }
 
-    private void connectDest(Channel tunnelChannel, TcpProtos.ConnectReqData reqData) throws Exception {
-        logger.info("connect dest: {}", String.format("%s:%s", reqData.getDestHost(), reqData.getDestPort()));
+    private void connectDestTunnel(Channel proxyChannel, TcpProtos.ConnectReqData reqData) throws Exception {
+        logger.info("connect destTunnel: {}", String.format("%s:%s", reqData.getDestHost(), reqData.getDestPort()));
         DataTunnel destTunnel = new DataTunnel(new ChannelInitializer<SocketChannel>() {
             @Override
             protected void initChannel(SocketChannel channel) throws Exception {
@@ -118,46 +127,49 @@ public class AgentHandler extends ChannelInboundHandlerAdapter {
                 pipeline.addLast(new LogHandler("destTunnel"));
             }
         });
-        destTunnel.connect(new InetSocketAddress(reqData.getDestHost(), reqData.getDestPort()), agentProperties.getConnectTimeout())
-                .addListener(new ChannelFutureListener() {
-                    @Override
-                    public void operationComplete(ChannelFuture future) throws Exception {
-                        Channel destChannel = future.channel();
-                        logger.info("destChannel isActive={}", destChannel.isActive());
-                        destChannel.closeFuture().addListener(new ChannelFutureListener() {
-                            @Override
-                            public void operationComplete(ChannelFuture future) throws Exception {
-                                logger.info("dest closed: sessionId={}", reqData.getSessionId());
-                            }
-                        });
-                        if (!destChannel.isActive()) {
-                            destChannel.close();
-                            TcpProtos.TcpMessage tcpMessage = TcpProtos.TcpMessage.newBuilder()
-                                    .setType(TcpProtos.DataType.ConnectResp)
-                                    .setData(TcpProtos.ConnectRespData.newBuilder()
-                                            .setProxyType(reqData.getProxyType())
-                                            .setSessionId(reqData.getSessionId())
-                                            .setCode(404)
-                                            .build().toByteString())
-                                    .build();
-                            tunnelChannel.writeAndFlush(tcpMessage);
-                            tunnelChannel.close();
-                            return;
-                        }
-                        destChannel.pipeline().addLast(new EncodeTunnelHandler(reqData.getSessionId(), "dest2tunnel", tunnelChannel));
-                        tunnelChannel.pipeline().addLast(new DecodeTunnelHandler(reqData.getSessionId(), "tunnel2dest", destChannel));
-
-                        TcpProtos.TcpMessage tcpMessage = TcpProtos.TcpMessage.newBuilder()
-                                .setType(TcpProtos.DataType.ConnectResp)
-                                .setData(TcpProtos.ConnectRespData.newBuilder()
-                                        .setProxyType(reqData.getProxyType())
-                                        .setSessionId(reqData.getSessionId())
-                                        .setCode(200)
-                                        .build().toByteString())
-                                .build();
-                        tunnelChannel.writeAndFlush(tcpMessage);
-                    }
-                });
+        ChannelFuture future = destTunnel.connect(new InetSocketAddress(reqData.getDestHost(), reqData.getDestPort()), agentProperties.getConnectTimeout());
+        future.channel().closeFuture().addListener(new ChannelFutureListener() {
+            @Override
+            public void operationComplete(ChannelFuture future) throws Exception {
+                logger.info("destTunnel closed dest={}", String.format("%s:%s", reqData.getDestHost(), reqData.getDestPort()));
+            }
+        });
+        future.addListener(new ChannelFutureListener() {
+            @Override
+            public void operationComplete(ChannelFuture future) throws Exception {
+                Channel destChannel = future.channel();
+                logger.info("destTunnel isActive={}", destChannel.isActive());
+                if (!future.isSuccess()) {
+                    destChannel.close();
+                    return;
+                }
+                if (!destChannel.isActive()) {
+                    destChannel.close();
+                    TcpProtos.TcpMessage tcpMessage = TcpProtos.TcpMessage.newBuilder()
+                            .setType(TcpProtos.DataType.ConnectResp)
+                            .setData(TcpProtos.ConnectRespData.newBuilder()
+                                    .setProxyType(reqData.getProxyType())
+                                    .setSessionId(reqData.getSessionId())
+                                    .setCode(404)
+                                    .build().toByteString())
+                            .build();
+                    proxyChannel.writeAndFlush(tcpMessage);
+                    proxyChannel.close();
+                    return;
+                }
+                destChannel.pipeline().addLast(new EncodeTunnelHandler(reqData.getSessionId(), "dest2tunnel", proxyChannel));
+                proxyChannel.pipeline().addLast(new DecodeTunnelHandler(reqData.getSessionId(), "tunnel2dest", destChannel));
+                TcpProtos.TcpMessage tcpMessage = TcpProtos.TcpMessage.newBuilder()
+                        .setType(TcpProtos.DataType.ConnectResp)
+                        .setData(TcpProtos.ConnectRespData.newBuilder()
+                                .setProxyType(reqData.getProxyType())
+                                .setSessionId(reqData.getSessionId())
+                                .setCode(200)
+                                .build().toByteString())
+                        .build();
+                proxyChannel.writeAndFlush(tcpMessage);
+            }
+        });
     }
 
     @Override

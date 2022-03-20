@@ -1,6 +1,5 @@
-package io.jaspercloud.proxy.client.support;
+package io.jaspercloud.proxy.core.support.client;
 
-import io.jaspercloud.proxy.client.config.ClientProperties;
 import io.jaspercloud.proxy.core.exception.ProcessException;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;

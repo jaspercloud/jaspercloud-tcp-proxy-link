@@ -1,13 +1,13 @@
 package io.jaspercloud.proxy.config;
 
-import io.jaspercloud.proxy.support.agent.server.AgentManager;
-import io.jaspercloud.proxy.support.agent.server.AgentProcessHandler;
-import io.jaspercloud.proxy.support.agent.server.AgentServer;
+import io.jaspercloud.proxy.support.agent.AgentManager;
+import io.jaspercloud.proxy.support.agent.AgentProcessHandler;
+import io.jaspercloud.proxy.support.agent.AgentServer;
 import io.jaspercloud.proxy.support.socks5.Socks5Control;
 import io.jaspercloud.proxy.support.socks5.Socks5Server;
 import io.jaspercloud.proxy.support.socks5.Socks5ServerHandler;
 import io.jaspercloud.proxy.support.tunnel.TunnelManager;
-import io.jaspercloud.proxy.support.tunnel.TunnelProcessHandler;
+import io.jaspercloud.proxy.support.tunnel.InitTunnelHandler;
 import io.jaspercloud.proxy.support.tunnel.TunnelServer;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -45,8 +45,8 @@ public class AppConfig {
         }
 
         @Bean
-        public TunnelProcessHandler tunnelProcessHandler() {
-            return new TunnelProcessHandler();
+        public InitTunnelHandler tunnelProcessHandler() {
+            return new InitTunnelHandler();
         }
 
         @Bean

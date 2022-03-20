@@ -2,7 +2,7 @@ package io.jaspercloud.proxy.support.socks5;
 
 import io.jaspercloud.proxy.config.ProxyServerProperties;
 import io.jaspercloud.proxy.core.proto.TcpProtos;
-import io.jaspercloud.proxy.support.agent.server.AgentManager;
+import io.jaspercloud.proxy.support.agent.AgentManager;
 import io.jaspercloud.proxy.support.tunnel.TunnelManager;
 import io.jaspercloud.proxy.util.AttributeKeys;
 import io.netty.channel.Channel;
@@ -72,7 +72,7 @@ public class Socks5ServerHandler extends SimpleChannelInboundHandler<Socks5Messa
         int dstPort = msg.dstPort();
         Channel proxyChannel = ctx.channel();
         AttributeKeys.dstAddrType(proxyChannel).set(msg.dstAddrType());
-        tunnelManager.addProxyClient(proxyChannel);
+        tunnelManager.addProxyChannel(proxyChannel);
         String agentId = AttributeKeys.bindAgentId(ctx.channel()).get();
         Channel agentChannel = agentManager.queryChannel(agentId);
         if (null == agentChannel) {

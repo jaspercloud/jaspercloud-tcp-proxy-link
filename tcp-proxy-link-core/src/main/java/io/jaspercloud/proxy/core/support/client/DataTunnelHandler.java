@@ -1,4 +1,4 @@
-package io.jaspercloud.proxy.client.support;
+package io.jaspercloud.proxy.core.support.client;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;

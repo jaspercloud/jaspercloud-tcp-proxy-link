@@ -4,13 +4,13 @@ import io.jaspercloud.proxy.core.proto.TcpProtos;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.SimpleChannelInboundHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
-public class DecodeTunnelHandler extends ChannelInboundHandlerAdapter {
+public class DecodeTunnelHandler extends SimpleChannelInboundHandler<TcpProtos.TcpMessage> {
 
     private Logger logger = LoggerFactory.getLogger(getClass());
     private String sessionId;
@@ -25,6 +25,7 @@ public class DecodeTunnelHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        logger.info("inactive sessionId={}, name={}", sessionId, name);
         dest.close();
     }
 
@@ -39,11 +40,10 @@ public class DecodeTunnelHandler extends ChannelInboundHandlerAdapter {
     }
 
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        TcpProtos.TcpMessage tcpMessage = (TcpProtos.TcpMessage) msg;
-        switch (tcpMessage.getType().getNumber()) {
+    protected void channelRead0(ChannelHandlerContext ctx, TcpProtos.TcpMessage msg) throws Exception {
+        switch (msg.getType().getNumber()) {
             case TcpProtos.DataType.TunnelData_VALUE: {
-                byte[] bytes = tcpMessage.getData().toByteArray();
+                byte[] bytes = msg.getData().toByteArray();
                 ByteBuf buffer = ctx.alloc().buffer(bytes.length);
                 buffer.writeBytes(bytes);
                 dest.writeAndFlush(buffer);
