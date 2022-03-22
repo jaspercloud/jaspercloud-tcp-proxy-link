@@ -35,7 +35,7 @@ under the License.
             <fileMode>0644</fileMode>
         </file>
         <file>
-            <source>src/main/resources/application-dev.properties</source>
+            <source>src/main/resources/application.properties</source>
             <outputDirectory>tcp-proxy-link-agent</outputDirectory>
             <fileMode>0644</fileMode>
         </file>
