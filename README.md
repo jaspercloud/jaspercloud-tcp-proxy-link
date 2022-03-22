@@ -29,3 +29,6 @@ tcp-proxy-link-server: 部署在服务器上，和agent、client通信
 tcp-proxy-link-agent: 部署在需要穿透的机器或网关机器上
 
 tcp-proxy-link-client: 本机运行配置要连接的机器内网地址、端口，和本机代理端口
+
+## 下载
+[2.0.0](https://github.com/jaspercloud/jaspercloud-tcp-proxy-link/releases/tag/2.0.0)
